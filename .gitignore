@@ -39,3 +39,13 @@ Thumbs.db
 
 # LangChain / LangSmith tracing (if used)
 .langchain/
+
+# Streamlit
+.streamlit/
+
+# Logs
+*.log
+logs/
+
+# Scratch / experiments
+scratch/
