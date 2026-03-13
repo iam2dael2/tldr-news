@@ -4,8 +4,11 @@ from langchain_core.tools import tool
 from langchain_groq import ChatGroq
 
 from commons.agents.prompt import NEWS_QUERY_PLANNER_SYSTEM_PROMPT
+from commons.utils.article import fetch_article_content
+from commons.utils.geolocation import get_country_code
 from commons.agents.formatter import NewsQuery
 
+from serpapi import GoogleSearch
 from dotenv import load_dotenv
 import os
 
@@ -37,8 +40,29 @@ def retrieve_relevant_news(user_input: str) -> dict:
     Returns a search_query for Google News and the original user_query for summarization.
     Use this tool FIRST before fetching any news articles.
     """
-    result: NewsQuery = query_planner_chain.invoke({"user_input": user_input})
-    return {
-        "search_query": result.search_query,
-        "user_query": result.user_query
-    }
+    # Step 1: Query planning
+    news_query_result: NewsQuery = query_planner_chain.invoke({"user_input": user_input})
+
+    # Step 2: Fetch from SerpAPI
+    google_search: GoogleSearch = GoogleSearch({
+        "engine": "google_news_light",
+        "q": news_query_result.search_query,
+        "gl": get_country_code(),
+        "api_key": os.getenv("SERP_API_KEY")
+    })
+
+    google_search_results = google_search.get_dict()
+    news_items = google_search_results.get("news_results", [])
+    
+    # Step 3: Extract full content per article
+    articles = []
+    for item in news_items:
+        url = item.get("link", "")
+        content = fetch_article_content(url)
+        articles.append({
+            "title": item.get("title", ""),
+            "url": url,
+            "content": content if content else item.get("snippet", "")  # fallback ke snippet
+        })
+
+    return articles

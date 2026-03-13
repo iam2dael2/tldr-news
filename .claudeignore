@@ -1,0 +1,28 @@
+# Python virtual environment (390MB — never relevant)
+venv/
+.venv/
+env/
+
+# Compiled bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Distribution / build
+dist/
+build/
+*.egg-info/
+
+# Secrets
+.env
+.env.*
+
+# Git internals
+.git/
+
+# Logs
+*.log
+logs/
+
+# Scratch
+scratch/

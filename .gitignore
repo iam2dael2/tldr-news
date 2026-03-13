@@ -1,3 +1,6 @@
+# AI Code Agent
+CLAUDE.md
+
 # Virtual environment
 venv/
 .venv/
@@ -29,6 +32,9 @@ htmlcov/
 .vscode/
 .idea/
 *.code-workspace
+
+# Claude Code local config (tool permissions, not project docs)
+.claude/
 
 # OS artifacts
 .DS_Store
