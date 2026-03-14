@@ -1,23 +1,12 @@
-from commons.utils.geolocation import get_country_code
-from langchain_groq import ChatGroq
-from serpapi import GoogleSearch
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
+from commons.agents.agent import agent
 
 if __name__ == "__main__":
-    query: str = input("Input the query you want to search: ")
+    query: str = input("Enter your news question: ")
+    print("\n🤖 Agent is working...\n")
 
-    params = {
-        "engine": "google_news_light",
-        "q": "Board of Peace",
-        "gl": get_country_code(),
-        "api_key": os.getenv("SERP_API_KEY")
-    }
+    result = agent.invoke(
+        {"messages": [("user", query)]},
+        config={"configurable": {"thread_id": "1"}}
+    )
 
-    search = GoogleSearch(params)
-    results = search.get_dict()
-    news_results = results["news_results"]
-
-    print(news_results)
+    print("\n" + result["messages"][-1].content)

@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from langchain_core.tools import tool
 
 from commons.agents.llm import llm
@@ -13,7 +14,8 @@ import os
 # Constants
 # ---------------------------------------------------------------------------
 
-_ARTICLE_CHAR_LIMIT = 6000 # ~1,500 tokens of content per article (1 token ≈ 4 chars)
+# ~1,500 tokens of content per article (1 token ≈ 4 chars)
+_ARTICLE_CHAR_LIMIT = 6000
 
 # ---------------------------------------------------------------------------
 # Chains
@@ -26,23 +28,52 @@ article_summarization_chain = ARTICLE_SUMMARIZATION_PROMPT_TEMPLATE | llm
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _map_summarize_articles(articles: list[dict], user_query: str) -> list[dict]:
-    """Map phase: summarize each article individually to keep each LLM call token-bounded."""
-    summaries = []
-    for article in articles:
-        content = article.get("content", "")[:_ARTICLE_CHAR_LIMIT]
-        result = article_summarization_chain.invoke({
-            "user_query": user_query,
+def _fetch_article(item: dict) -> dict:
+    """Fetch full content for a single news item."""
+    url = item.get("link", "")
+    title = item.get("title", "")
+    content = fetch_article_content(url)
+    print(f"  ✓ Fetched: {title[:70]}")
+    return {
+        "title": title,
+        "url": url,
+        "content": content if content else item.get("snippet", "")
+    }
+
+
+def _summarize_single(article: dict, user_query: str, index: int, total: int) -> dict | None:
+    """Summarize a single article, returning None if not relevant."""
+    content = article.get("content", "")[:_ARTICLE_CHAR_LIMIT]
+    result = article_summarization_chain.invoke({
+        "user_query": user_query,
+        "title": article.get("title", ""),
+        "content": content
+    })
+    summary_text = result.content.strip()
+    print(f"  ✓ Summarized ({index}/{total}): {article.get('title', '')[:70]}")
+    if summary_text.lower() != "not relevant.":
+        return {
             "title": article.get("title", ""),
-            "content": content
-        })
-        summary_text = result.content.strip()
-        if summary_text.lower() != "not relevant.":
-            summaries.append({
-                "title": article.get("title", ""),
-                "url": article.get("url", ""),
-                "summary": summary_text
-            })
+            "url": article.get("url", ""),
+            "summary": summary_text
+        }
+    return None
+
+
+def _map_summarize_articles(articles: list[dict], user_query: str) -> list[dict]:
+    """Map phase: summarize all articles in parallel, drop irrelevant ones."""
+    total = len(articles)
+    print(f"\n📝 Summarizing {total} articles in parallel...")
+    summaries = []
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {
+            executor.submit(_summarize_single, article, user_query, i + 1, total): article
+            for i, article in enumerate(articles)
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                summaries.append(result)
     return summaries
 
 # ---------------------------------------------------------------------------
@@ -53,13 +84,15 @@ def _map_summarize_articles(articles: list[dict], user_query: str) -> list[dict]
 def retrieve_relevant_news(user_input: str) -> list[dict]:
     """
     Fetches and summarizes relevant news articles for a given user question.
-    Optimizes the query for Google News, fetches full article content,
-    then runs a map-reduce summarization to return compact per-article summaries.
+    Optimizes the query for Google News, fetches full article content in parallel,
+    then runs a parallel map-reduce summarization to return compact per-article summaries.
     """
     # Step 1: Optimize the query for Google News
+    print("🧠 Planning search query...")
     news_query: NewsQuery = query_planner_chain.invoke({"user_input": user_input})
 
     # Step 2: Search Google News via SerpAPI
+    print(f"🔎 Searching Google News: \"{news_query.search_query}\"")
     search_results = GoogleSearch({
         "engine": "google_news_light",
         "q": news_query.search_query,
@@ -68,16 +101,12 @@ def retrieve_relevant_news(user_input: str) -> list[dict]:
     }).get_dict()
     news_items = search_results.get("news_results", [])
 
-    # Step 3: Fetch full article content (fallback to snippet if extraction fails)
-    articles = []
-    for item in news_items:
-        url = item.get("link", "")
-        content = fetch_article_content(url)
-        articles.append({
-            "title": item.get("title", ""),
-            "url": url,
-            "content": content if content else item.get("snippet", "")
-        })
+    # Step 3: Fetch full article content in parallel
+    print(f"\n🔍 Fetching {len(news_items)} articles in parallel...")
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        articles = list(executor.map(_fetch_article, news_items))
 
-    # Step 4: Map phase — summarize each article individually (token-bounded)
-    return _map_summarize_articles(articles, news_query.user_query)
+    # Step 4: Map phase — summarize each article in parallel (token-bounded)
+    summaries = _map_summarize_articles(articles, news_query.user_query)
+    print(f"\n✅ Done — {len(summaries)} relevant articles found.")
+    return summaries
