@@ -7,8 +7,10 @@ from commons.utils.article import fetch_article_content
 from commons.utils.geolocation import get_country_code
 from commons.agents.formatter import NewsQuery
 
+from groq import RateLimitError
 from serpapi import GoogleSearch
 import os
+import time
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -44,11 +46,22 @@ def _fetch_article(item: dict) -> dict:
 def _summarize_single(article: dict, user_query: str, index: int, total: int) -> dict | None:
     """Summarize a single article, returning None if not relevant."""
     content = article.get("content", "")[:_ARTICLE_CHAR_LIMIT]
-    result = article_summarization_chain.invoke({
-        "user_query": user_query,
-        "title": article.get("title", ""),
-        "content": content
-    })
+    for attempt in range(3):
+        try:
+            result = article_summarization_chain.invoke({
+                "user_query": user_query,
+                "title": article.get("title", ""),
+                "content": content
+            })
+            break
+        except RateLimitError:
+            wait = 10 * (attempt + 1)  # 10s, 20s, 30s
+            print(f"  ⚠️ Rate limited, retrying in {wait}s... ({attempt + 1}/3)")
+            time.sleep(wait)
+    else:
+        print(f"  ✗ Skipped (rate limit): {article.get('title', '')[:70]}")
+        return None
+
     summary_text = result.content.strip()
     print(f"  ✓ Summarized ({index}/{total}): {article.get('title', '')[:70]}")
     if summary_text.lower() != "not relevant.":
@@ -65,7 +78,7 @@ def _map_summarize_articles(articles: list[dict], user_query: str) -> list[dict]
     total = len(articles)
     print(f"\n📝 Summarizing {total} articles in parallel...")
     summaries = []
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         futures = {
             executor.submit(_summarize_single, article, user_query, i + 1, total): article
             for i, article in enumerate(articles)
