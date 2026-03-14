@@ -1,60 +1,74 @@
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
-from langchain_groq import ChatGroq
 
-from commons.agents.prompt import NEWS_QUERY_PLANNER_SYSTEM_PROMPT
+from commons.agents.llm import llm
+from commons.agents.prompt import ARTICLE_SUMMARIZATION_PROMPT_TEMPLATE, QUERY_PLANNER_PROMPT_TEMPLATE
 from commons.utils.article import fetch_article_content
 from commons.utils.geolocation import get_country_code
 from commons.agents.formatter import NewsQuery
 
 from serpapi import GoogleSearch
-from dotenv import load_dotenv
 import os
 
-load_dotenv()
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
-# Initialize the LLM instance using Groq with the Qwen model
-llm: BaseChatModel = ChatGroq(
-    model="qwen/qwen3-32b",
-    temperature=0,
-    max_tokens=None,
-    reasoning_format="hidden",
-    timeout=10,
-    max_retries=2
-)
+_ARTICLE_CHAR_LIMIT = 6000 # ~1,500 tokens of content per article (1 token ≈ 4 chars)
 
-query_planner_prompt: ChatPromptTemplate = ChatPromptTemplate.from_messages(
-    [
-        ("system", NEWS_QUERY_PLANNER_SYSTEM_PROMPT),
-        ("user", "{user_input}")
-    ]
-)
+# ---------------------------------------------------------------------------
+# Chains
+# ---------------------------------------------------------------------------
 
-query_planner_chain = query_planner_prompt | llm.with_structured_output(NewsQuery)
+query_planner_chain = QUERY_PLANNER_PROMPT_TEMPLATE | llm.with_structured_output(NewsQuery)
+article_summarization_chain = ARTICLE_SUMMARIZATION_PROMPT_TEMPLATE | llm
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _map_summarize_articles(articles: list[dict], user_query: str) -> list[dict]:
+    """Map phase: summarize each article individually to keep each LLM call token-bounded."""
+    summaries = []
+    for article in articles:
+        content = article.get("content", "")[:_ARTICLE_CHAR_LIMIT]
+        result = article_summarization_chain.invoke({
+            "user_query": user_query,
+            "title": article.get("title", ""),
+            "content": content
+        })
+        summary_text = result.content.strip()
+        if summary_text.lower() != "not relevant.":
+            summaries.append({
+                "title": article.get("title", ""),
+                "url": article.get("url", ""),
+                "summary": summary_text
+            })
+    return summaries
+
+# ---------------------------------------------------------------------------
+# Tool
+# ---------------------------------------------------------------------------
 
 @tool
-def retrieve_relevant_news(user_input: str) -> dict:
+def retrieve_relevant_news(user_input: str) -> list[dict]:
     """
-    Converts a user's news-related question into a structured query object.
-    Returns a search_query for Google News and the original user_query for summarization.
-    Use this tool FIRST before fetching any news articles.
+    Fetches and summarizes relevant news articles for a given user question.
+    Optimizes the query for Google News, fetches full article content,
+    then runs a map-reduce summarization to return compact per-article summaries.
     """
-    # Step 1: Query planning
-    news_query_result: NewsQuery = query_planner_chain.invoke({"user_input": user_input})
+    # Step 1: Optimize the query for Google News
+    news_query: NewsQuery = query_planner_chain.invoke({"user_input": user_input})
 
-    # Step 2: Fetch from SerpAPI
-    google_search: GoogleSearch = GoogleSearch({
+    # Step 2: Search Google News via SerpAPI
+    search_results = GoogleSearch({
         "engine": "google_news_light",
-        "q": news_query_result.search_query,
+        "q": news_query.search_query,
         "gl": get_country_code(),
         "api_key": os.getenv("SERP_API_KEY")
-    })
+    }).get_dict()
+    news_items = search_results.get("news_results", [])
 
-    google_search_results = google_search.get_dict()
-    news_items = google_search_results.get("news_results", [])
-    
-    # Step 3: Extract full content per article
+    # Step 3: Fetch full article content (fallback to snippet if extraction fails)
     articles = []
     for item in news_items:
         url = item.get("link", "")
@@ -62,7 +76,8 @@ def retrieve_relevant_news(user_input: str) -> dict:
         articles.append({
             "title": item.get("title", ""),
             "url": url,
-            "content": content if content else item.get("snippet", "")  # fallback ke snippet
+            "content": content if content else item.get("snippet", "")
         })
 
-    return articles
+    # Step 4: Map phase — summarize each article individually (token-bounded)
+    return _map_summarize_articles(articles, news_query.user_query)

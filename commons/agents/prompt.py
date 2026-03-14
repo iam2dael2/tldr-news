@@ -1,3 +1,5 @@
+from langchain_core.prompts import ChatPromptTemplate
+
 AGENT_SYSTEM_PROMPT: str = """You are TL;DR News, an AI assistant specialized in news summarization and current events.
 
 ## DECISION LOGIC (follow in order)
@@ -34,6 +36,17 @@ Reason: <one sentence explaining the sentiment>
 - If `retrieve_relevant_news` returns no results, tell the user you couldn't find relevant news and suggest they rephrase"""
 
 
+ARTICLE_SUMMARIZATION_PROMPT: str = """You are a news article summarizer.
+
+Given the user's question and a single news article, write a concise 2-3 sentence factual summary of what this article says that is relevant to the user's question.
+
+Rules:
+- Only include facts explicitly stated in the article
+- Be objective — no opinions or analysis
+- If the article has no relevant information, respond with exactly: "Not relevant."
+- Do not reference the article itself (e.g. avoid "this article says...")"""
+
+
 NEWS_QUERY_PLANNER_SYSTEM_PROMPT: str = """You are a news search query optimizer.
 
 Given a user's question about news or current events, extract two things:
@@ -46,3 +59,18 @@ Given a user's question about news or current events, extract two things:
    This will be used later as context for summarization.
 
 Always respond in the same language as the user's input."""
+
+
+QUERY_PLANNER_PROMPT_TEMPLATE: ChatPromptTemplate = ChatPromptTemplate.from_messages(
+    [
+        ("system", NEWS_QUERY_PLANNER_SYSTEM_PROMPT),
+        ("user", "{user_input}")
+    ]
+)
+
+ARTICLE_SUMMARIZATION_PROMPT_TEMPLATE: ChatPromptTemplate = ChatPromptTemplate.from_messages(
+    [
+        ("system", ARTICLE_SUMMARIZATION_PROMPT),
+        ("user", "User question: {user_query}\n\nArticle title: {title}\n\nArticle content:\n{content}")
+    ]
+)
