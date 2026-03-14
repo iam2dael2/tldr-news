@@ -1,12 +1,18 @@
-from pathlib import Path
 import requests
 
-CLIENT_COUNTRY_API: Path = Path(r"https://ipapi.co/country/")
-
-def get_country_code():
+def get_country_code() -> str:
     try:
-        response = requests.get(CLIENT_COUNTRY_API)
-        return response.text.strip().lower()  # return "id", "us", "gb", dst
+        return requests.get("https://ipapi.co/country/", timeout=5).text.strip().lower()
+    except Exception:
+        return "us"
 
-    except:
-        return "us"  # fallback default
+
+def get_language_code() -> str:
+    """Return the primary BCP-47 language code for the client's locale (e.g. 'id', 'en')."""
+    try:
+        # ipapi.co/languages/ returns comma-separated codes, e.g. "id,jv,su,ms"
+        languages = requests.get("https://ipapi.co/languages/", timeout=5).text.strip()
+        primary = languages.split(",")[0]
+        return primary if primary else "en"
+    except Exception:
+        return "en"

@@ -7,9 +7,21 @@ class NewsQuery(BaseModel):
     search_query: str = Field(
         description="Optimized search query for Google News (keywords only, no filler words)"
     )
-    
     user_query: str = Field(
         description="Original user question, used for summarization context"
+    )
+    is_general_query: bool = Field(
+        description=(
+            "True if the user is asking for general/broad news with no specific topic "
+            "(e.g. 'latest news today', 'berita terkini', 'what's happening'). "
+            "False if the user is asking about a specific topic, event, or entity."
+        )
+    )
+    hl: str = Field(
+        description=(
+            "BCP-47 language code of the user's query language for Google News host language. "
+            "Examples: 'id' for Indonesian, 'en' for English, 'ms' for Malay."
+        )
     )
 
 
