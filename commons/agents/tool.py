@@ -13,6 +13,8 @@ from datetime import datetime
 import os
 import time
 
+from commons.utils.log_queue import emit
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -108,7 +110,7 @@ def _summarize_single(article: dict, user_query: str, index: int, total: int) ->
             break
         except RateLimitError:
             wait = 10 * (attempt + 1)  # 10s, 20s, 30s
-            print(f"  ⚠️ Rate limited, retrying in {wait}s... ({attempt + 1}/3)")
+            emit(f"  ⚠️ Rate limited on summarization, retrying in {wait}s... ({attempt + 1}/3)")
             logger.warning(f"Rate limited on article '{title}' — retrying in {wait}s (attempt {attempt + 1}/3)")
             time.sleep(wait)
     else:
@@ -128,7 +130,7 @@ def _summarize_single(article: dict, user_query: str, index: int, total: int) ->
 def _map_summarize_articles(articles: list[dict], user_query: str) -> list[dict]:
     """Map phase: summarize all articles in parallel, drop irrelevant ones."""
     total = len(articles)
-    print(f"\n📝 Summarizing {total} articles in parallel...")
+    emit(f"📝 Summarizing {total} articles in parallel...")
     logger.info(f"Map phase started: {total} articles to summarize")
     summaries = []
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -161,7 +163,7 @@ def refine_search_query(user_input: str) -> str:
         "user_input": user_input
     })
     enriched = result.content.strip()
-    print(f"🗓️  Query enriched: \"{enriched}\"")
+    emit(f"🗓️  Query enriched: \"{enriched}\"")
     logger.info(f"Query enriched: '{user_input}' → '{enriched}'")
     return enriched
 
@@ -177,7 +179,7 @@ def retrieve_relevant_news(user_input: str) -> list[dict]:
     logger.info(f"Tool called: retrieve_relevant_news | input='{user_input}'")
 
     # Step 1: Optimize the query and detect locale in parallel
-    print("🧠 Planning search query...")
+    emit("🧠 Planning search strategy...")
     with ThreadPoolExecutor(max_workers=2) as ex:
         future_query = ex.submit(query_planner_chain.invoke, {"user_input": user_input})
         future_locale = ex.submit(locale_detection_chain.invoke, {"user_input": user_input})
@@ -188,25 +190,25 @@ def retrieve_relevant_news(user_input: str) -> list[dict]:
 
     # Step 2: Search Google News via SerpAPI
     if news_query.is_general_query:
-        print(f"🔎 General query detected — searching across {len(_DIVERSITY_TOPICS)} topic categories...")
+        emit(f"🔎 General query — searching across {len(_DIVERSITY_TOPICS)} topic categories...")
         logger.info("Search mode: multi-topic diversification")
         news_items = _search_diverse(news_query.search_query, gl, hl)
     else:
-        print(f"🔎 Searching Google News: \"{news_query.search_query}\"")
+        emit(f"🔎 Searching Google News: \"{news_query.search_query}\"")
         logger.info("Search mode: single-topic")
         news_items = _search_single(news_query.search_query, gl, hl)
 
     logger.info(f"SerpAPI returned {len(news_items)} results total")
 
     # Step 3: Fetch full article content in parallel
-    print(f"\n🔍 Fetching {len(news_items)} articles in parallel...")
+    emit(f"📖 Fetching content from {len(news_items)} articles...")
     logger.info(f"Fetching {len(news_items)} articles in parallel")
     with ThreadPoolExecutor(max_workers=8) as executor:
         articles = list(executor.map(_fetch_article, news_items))
 
     # Step 4: Map phase — summarize each article in parallel (token-bounded)
     summaries = _map_summarize_articles(articles, news_query.user_query)
-    print(f"\n✅ Done — {len(summaries)} relevant articles found.")
+    emit(f"📰 Found {len(summaries)} relevant articles")
     logger.info(f"Tool complete: {len(summaries)} relevant summaries returned")
 
     # Never return an empty list — Groq rejects ToolMessage with content=[]
