@@ -1,4 +1,5 @@
 import html as _html
+import markdown as _markdown
 import queue as _queue
 import re
 import threading
@@ -209,8 +210,8 @@ def _render_message(parsed: dict) -> None:
         reason_html = f'<span class="sentiment-reason">— {parsed["reason"]}</span>' if parsed["reason"] else ""
         st.markdown(f"""
 <div class="news-card">
-  <div class="news-card-insight">🔑 {parsed["key_insight"]}</div>
-  <div class="news-card-summary">{parsed["summary"]}</div>
+  <div class="news-card-insight">🔑 {_markdown.markdown(parsed["key_insight"])}</div>
+  <div class="news-card-summary">{_markdown.markdown(parsed["summary"])}</div>
   <div class="news-card-footer">
     <span class="badge {badge_class}">{sentiment}</span>
     {reason_html}

@@ -87,7 +87,7 @@ def _fetch_article(item: dict) -> dict:
     url = item.get("link", "")
     title = item.get("title", "")
     content = fetch_article_content(url)
-    print(f"  ✓ Fetched: {title[:70]}")
+    emit(f"  ✓ {title[:70]}")
     logger.debug(f"Fetched article: {title} | url={url} | content_len={len(content)}")
     return {
         "title": title,
