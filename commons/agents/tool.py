@@ -70,9 +70,15 @@ def _search_diverse(base_query: str, gl: str, hl: str) -> list[dict]:
     seen_urls: set[str] = set()
     diverse_items: list[dict] = []
 
-    for topic in _DIVERSITY_TOPICS:
-        topic_query = f"{base_query} {topic}"
-        results = GoogleSearch(_serpapi_params(topic_query, gl, hl)).get_dict().get("news_results", [])
+    def _fetch_topic(topic: str) -> list[dict]:
+        return GoogleSearch(
+            _serpapi_params(f"{base_query} {topic}", gl, hl)
+        ).get_dict().get("news_results", [])
+
+    with ThreadPoolExecutor(max_workers=len(_DIVERSITY_TOPICS)) as executor:
+        all_results = executor.map(_fetch_topic, _DIVERSITY_TOPICS)
+
+    for results in all_results:
         for item in results[:2]:
             url = item.get("link", "")
             if url and url not in seen_urls:

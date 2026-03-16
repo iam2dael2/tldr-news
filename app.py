@@ -219,9 +219,10 @@ def _render_message(parsed: dict) -> None:
 </div>""", unsafe_allow_html=True)
     else:
         # Render markdown inside a styled card
-        st.markdown('<div class="plain-card">', unsafe_allow_html=True)
-        st.markdown(parsed["raw"])
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="plain-card">{_markdown.markdown(parsed["raw"])}</div>',
+            unsafe_allow_html=True
+        )
 
 
 def _compact_if_needed(config: dict) -> None:
