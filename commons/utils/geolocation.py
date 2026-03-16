@@ -2,7 +2,9 @@ import requests
 
 def get_country_code() -> str:
     try:
-        return requests.get("https://ipapi.co/country/", timeout=5).text.strip().lower()
+        code = requests.get("https://ipapi.co/country/", timeout=5).text.strip().lower()
+        # Guard against rate-limit error responses (e.g. {"error": true, ...})
+        return code if len(code) == 2 and code.isalpha() else "us"
     except Exception:
         return "us"
 
@@ -13,6 +15,7 @@ def get_language_code() -> str:
         # ipapi.co/languages/ returns comma-separated codes, e.g. "id,jv,su,ms"
         languages = requests.get("https://ipapi.co/languages/", timeout=5).text.strip()
         primary = languages.split(",")[0]
-        return primary if primary else "en"
+        # Guard against rate-limit error responses
+        return primary if primary.isalpha() else "en"
     except Exception:
         return "en"

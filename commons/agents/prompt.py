@@ -76,9 +76,30 @@ Rules:
 - Do not reference the article itself (e.g. avoid "this article says...")"""
 
 
+LOCALE_DETECTION_PROMPT: str = """You are a locale classifier for a news search engine.
+
+Given a user's query, determine the two most appropriate SerpAPI parameters:
+
+1. gl — Google country code: infer from the query's language, geographic references, or topic context.
+   - Indonesian query or Indonesian topic → "id"
+   - English query about US topics → "us"
+   - Malay query or Malaysian topic → "my"
+   - English query with no country context → "us"
+   Use valid ISO 3166-1 alpha-2 codes (e.g. "id", "us", "gb", "sg", "my", "au", "in").
+
+2. hl — Google language code: match the language the user wrote in.
+   - Indonesian → "id"
+   - English → "en"
+   - Malay → "ms"
+   - Simplified Chinese → "zh-cn"
+   Use valid BCP-47 language codes supported by Google.
+
+Default gl to "us" and hl to "en" only when genuinely ambiguous."""
+
+
 NEWS_QUERY_PLANNER_SYSTEM_PROMPT: str = """You are a news search query optimizer.
 
-Given a user's question about news or current events, extract four things:
+Given a user's question about news or current events, extract three things:
 
 1. search_query: A concise, keyword-focused query for Google News search.
    - Remove filler words (what, is, the, about, etc.)
@@ -92,11 +113,15 @@ Given a user's question about news or current events, extract four things:
    (e.g. "berita terkini hari ini", "latest news today", "apa yang terjadi", "what's happening").
    false if the user is asking about a specific topic, event, person, or entity.
 
-4. hl: The BCP-47 language code of the user's query language for Google News.
-   Examples: "id" for Indonesian, "en" for English, "ms" for Malay, "es" for Spanish.
-
 Always respond in the same language as the user's input."""
 
+
+LOCALE_DETECTION_PROMPT_TEMPLATE: ChatPromptTemplate = ChatPromptTemplate.from_messages(
+    [
+        ("system", LOCALE_DETECTION_PROMPT),
+        ("user", "{user_input}")
+    ]
+)
 
 QUERY_ENRICHMENT_PROMPT_TEMPLATE: ChatPromptTemplate = ChatPromptTemplate.from_messages(
     [

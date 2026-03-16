@@ -22,7 +22,7 @@ def _compact_if_needed(config: dict) -> None:
     summary = llm.invoke(
         f"Summarize this conversation concisely, preserving all key facts:\n\n{history_text}"
     ).content
-
+    
     remove_ops = [RemoveMessage(id=m.id) for m in to_summarize]
     summary_msg = SystemMessage(content=f"[Conversation Summary]\n{summary}")
     agent.update_state(config, {"messages": remove_ops + [summary_msg]})
@@ -58,9 +58,11 @@ if __name__ == "__main__":
         if tool_called:
             logger.info("Decision: External retrieval triggered (tool called)")
         else:
+            
             logger.info("Decision: Answered from conversation context / general knowledge")
 
         print("\n" + result["messages"][-1].content + "\n")
 
         # Compact history if it has grown too long
         _compact_if_needed(config)
+        

@@ -17,10 +17,22 @@ class NewsQuery(BaseModel):
             "False if the user is asking about a specific topic, event, or entity."
         )
     )
+
+
+class LocaleQuery(BaseModel):
+    """Locale parameters inferred from the user's query for SerpAPI."""
+    gl: str = Field(
+        description=(
+            "SerpAPI Google country code (gl) inferred from the query's language, topic, or geographic context. "
+            "Must be a valid ISO 3166-1 alpha-2 code supported by SerpAPI (e.g. 'id', 'us', 'gb', 'sg', 'my'). "
+            "Default to 'us' if country context cannot be determined."
+        )
+    )
     hl: str = Field(
         description=(
-            "BCP-47 language code of the user's query language for Google News host language. "
-            "Examples: 'id' for Indonesian, 'en' for English, 'ms' for Malay."
+            "SerpAPI Google language code (hl) matching the query's language. "
+            "Must be a valid BCP-47 code supported by SerpAPI (e.g. 'id', 'en', 'ms', 'zh-cn'). "
+            "Default to 'en' if language cannot be determined."
         )
     )
 

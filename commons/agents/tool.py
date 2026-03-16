@@ -1,12 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from langchain_core.tools import tool
 
-from commons.agents.llm import llm
-from commons.agents.prompt import ARTICLE_SUMMARIZATION_PROMPT_TEMPLATE, QUERY_ENRICHMENT_PROMPT_TEMPLATE, QUERY_PLANNER_PROMPT_TEMPLATE
+from commons.agents.llm import llm, locale_llm
+from commons.agents.prompt import ARTICLE_SUMMARIZATION_PROMPT_TEMPLATE, LOCALE_DETECTION_PROMPT_TEMPLATE, QUERY_ENRICHMENT_PROMPT_TEMPLATE, QUERY_PLANNER_PROMPT_TEMPLATE
 from commons.utils.article import fetch_article_content
-from commons.utils.geolocation import get_country_code
 from commons.utils.logger import logger
-from commons.agents.formatter import NewsQuery
+from commons.agents.formatter import LocaleQuery, NewsQuery
 
 from groq import RateLimitError
 from serpapi import GoogleSearch
@@ -35,6 +34,7 @@ _DIVERSITY_TOPICS = [
 # Chains
 # ---------------------------------------------------------------------------
 
+locale_detection_chain = LOCALE_DETECTION_PROMPT_TEMPLATE | locale_llm.with_structured_output(LocaleQuery)
 query_enrichment_chain = QUERY_ENRICHMENT_PROMPT_TEMPLATE | llm
 query_planner_chain = QUERY_PLANNER_PROMPT_TEMPLATE | llm.with_structured_output(NewsQuery)
 article_summarization_chain = ARTICLE_SUMMARIZATION_PROMPT_TEMPLATE | llm
@@ -176,11 +176,14 @@ def retrieve_relevant_news(user_input: str) -> list[dict]:
     """
     logger.info(f"Tool called: retrieve_relevant_news | input='{user_input}'")
 
-    # Step 1: Optimize the query for Google News
+    # Step 1: Optimize the query and detect locale in parallel
     print("🧠 Planning search query...")
-    news_query: NewsQuery = query_planner_chain.invoke({"user_input": user_input})
-    gl = get_country_code()
-    hl = news_query.hl
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        future_query = ex.submit(query_planner_chain.invoke, {"user_input": user_input})
+        future_locale = ex.submit(locale_detection_chain.invoke, {"user_input": user_input})
+        news_query: NewsQuery = future_query.result()
+        locale: LocaleQuery = future_locale.result()
+    gl, hl = locale.gl, locale.hl
     logger.info(f"Query planned: search='{news_query.search_query}' | is_general={news_query.is_general_query} | gl={gl} | hl={hl}")
 
     # Step 2: Search Google News via SerpAPI
@@ -205,4 +208,8 @@ def retrieve_relevant_news(user_input: str) -> list[dict]:
     summaries = _map_summarize_articles(articles, news_query.user_query)
     print(f"\n✅ Done — {len(summaries)} relevant articles found.")
     logger.info(f"Tool complete: {len(summaries)} relevant summaries returned")
+
+    # Never return an empty list — Groq rejects ToolMessage with content=[]
+    if not summaries:
+        return "No relevant articles found. The query may be too niche or no recent coverage exists."
     return summaries
