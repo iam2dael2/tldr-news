@@ -1,11 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from langchain_core.tools import tool
 
-from commons.agents.llm import llm, locale_llm
-from commons.agents.prompt import ARTICLE_SUMMARIZATION_PROMPT_TEMPLATE, LOCALE_DETECTION_PROMPT_TEMPLATE, QUERY_ENRICHMENT_PROMPT_TEMPLATE, QUERY_PLANNER_PROMPT_TEMPLATE
-from commons.utils.article import fetch_article_content
-from commons.utils.logger import logger
-from commons.agents.formatter import LocaleQuery, NewsQuery
+from src.llm import llm, locale_llm
+from src.prompts import ARTICLE_SUMMARIZATION_PROMPT_TEMPLATE, LOCALE_DETECTION_PROMPT_TEMPLATE, QUERY_ENRICHMENT_PROMPT_TEMPLATE, QUERY_PLANNER_PROMPT_TEMPLATE
+from src.utils.article import fetch_article_content
+from src.utils.logger import logger
+from src.models import LocaleQuery, NewsQuery
 
 from groq import RateLimitError
 from serpapi import GoogleSearch
@@ -13,7 +13,7 @@ from datetime import datetime
 import os
 import time
 
-from commons.utils.log_queue import emit
+from src.utils.log_queue import emit
 
 # ---------------------------------------------------------------------------
 # Constants

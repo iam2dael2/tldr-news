@@ -8,10 +8,10 @@ import uuid
 import streamlit as st
 from langchain_core.messages import RemoveMessage, SystemMessage
 
-from commons.agents.agent import agent
-from commons.agents.llm import llm
-from commons.utils import log_queue as lq
-from commons.utils.logger import logger
+from src.agent import agent
+from src.llm import llm
+from src.utils import log_queue as lq
+from src.utils.logger import logger
 
 # ---------------------------------------------------------------------------
 # Page config — must be first Streamlit call

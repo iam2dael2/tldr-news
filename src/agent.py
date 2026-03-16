@@ -2,10 +2,10 @@ from langchain.agents import create_agent
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
-from commons.agents.llm import llm
-from commons.agents.tool import refine_search_query, retrieve_relevant_news
-from commons.agents.prompt import build_agent_system_prompt
-from commons.utils.geolocation import get_language_code
+from src.llm import llm
+from src.tools import refine_search_query, retrieve_relevant_news
+from src.prompts import build_agent_system_prompt
+from src.utils.geolocation import get_language_code
 
 # Detect the user's locale language once at startup for use as the ambiguity fallback
 _locale_language: str = get_language_code()
