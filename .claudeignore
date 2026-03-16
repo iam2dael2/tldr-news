@@ -19,6 +19,16 @@ build/
 
 # Git internals
 .git/
+.gitignore
+
+# IDE / editor
+.vscode/
+.idea/
+
+# Claude Code config (already injected as system prompt — no need to re-read as files)
+.claude/
+.claudeignore
+CLAUDE.md
 
 # Logs
 *.log
