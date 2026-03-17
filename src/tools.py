@@ -18,6 +18,10 @@ from src.utils.log_queue import emit
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+# Stores the most recent search_query and video suggestion flag for use by the YouTube
+# integration in app.py. Safe for single-user personal app (one agent call at a time).
+_last_search_query: str = ""
+_suggest_videos: bool = False
 
 # ~750 tokens of content per article (1 token ≈ 4 chars) — enough for lede + key paragraphs
 _ARTICLE_CHAR_LIMIT = 3000
@@ -188,14 +192,14 @@ def retrieve_relevant_news(user_input: str) -> list[dict]:
     """
     logger.info(f"Tool called: retrieve_relevant_news | input='{user_input}'")
 
-    # Step 1: Optimize the query and detect locale in parallel
+    # Step 1: Detect locale first, then plan the query using the target language
     emit("🧠 Planning search strategy...")
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        future_query = ex.submit(query_planner_chain.invoke, {"user_input": user_input})
-        future_locale = ex.submit(locale_detection_chain.invoke, {"user_input": user_input})
-        news_query: NewsQuery = future_query.result()
-        locale: LocaleQuery = future_locale.result()
+    locale: LocaleQuery = locale_detection_chain.invoke({"user_input": user_input})
     gl, hl = locale.gl, locale.hl
+    news_query: NewsQuery = query_planner_chain.invoke({"user_input": user_input, "search_language": hl})
+    global _last_search_query, _suggest_videos
+    _last_search_query = news_query.search_query   # expose for YouTube
+    _suggest_videos = news_query.suggest_videos
     logger.info(f"Query planned: search='{news_query.search_query}' | is_general={news_query.is_general_query} | gl={gl} | hl={hl}")
 
     # Step 2: Search Google News via SerpAPI

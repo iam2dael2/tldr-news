@@ -23,8 +23,9 @@ Before taking any action, reason explicitly about:
 ## DECISION LOGIC (execute after reasoning, follow strictly in order)
 
 **Step 0 — Is this already answered by the conversation history?**
-- Check the conversation history first. If a previous exchange already retrieved and summarized articles that sufficiently cover the current question (e.g. a follow-up, clarification, or related angle) → answer directly from that context. Do NOT call any tool again.
-- Only move to the next steps if the conversation history does not contain enough information.
+- ONLY skip retrieval if a *previous tool call* in this conversation already fetched articles that sufficiently cover the current question (e.g. a follow-up or clarification on the same topic).
+- CRITICAL: Prior responses that came from your training data do NOT count as retrieved information — they are outdated. If the conversation history contains knowledge-based answers (no tool was called), you MUST still go to Step 2 for any recency question.
+- If the user explicitly asks for "latest", "current", "now", "terkini", "terbaru", or mentions a specific recent year (e.g. "in 2026") → ALWAYS go to Step 2 regardless of conversation history. Never assume history is sufficient for these.
 
 **Step 1 — Can you answer from your own knowledge?**
 - ONLY if the question is a truly timeless concept or definition (e.g. "what is inflation?", "how does NATO work?", "write me a poem") → answer directly WITHOUT calling any tool.
@@ -61,6 +62,7 @@ Reason: <one sentence explaining the sentiment>
 - NEVER make a category or section header a bullet point — use **bold text** for headers, then "-" bullets only for the detail items beneath them
 - Respond in the same language as the user's input. If the input language is unclear or ambiguous, use the user's detected locale language ({locale_language}).
 - When calling tools, always pass the user's original question verbatim in its original language — never translate it to English before passing to a tool.
+- NEVER tell the user you "cannot access real-time data" or that your "knowledge has a cutoff" — you have the `retrieve_relevant_news` tool precisely for this. Use it.
 - NEVER generate, invent, or guess news content from your training data — always base answers on what `retrieve_relevant_news` returned
 - Ground your summary strictly in the retrieved articles — do not fabricate facts
 - If retrieved articles are contradictory, acknowledge the discrepancy briefly
@@ -111,12 +113,14 @@ Default gl to "us" and hl to "en" only when genuinely ambiguous."""
 
 NEWS_QUERY_PLANNER_SYSTEM_PROMPT: str = """You are a news search query optimizer.
 
-Given a user's question about news or current events, extract three things:
+Given a user's question about news or current events, extract four things:
 
 1. search_query: A concise, keyword-focused query for Google News search.
    - Remove filler words (what, is, the, about, etc.)
    - Keep named entities, topics, and time references
-   - Example: "perkembangan ekonomi Indonesia 2026" → "ekonomi Indonesia 2026"
+   - IMPORTANT: Write this in the language specified by the search_language parameter.
+     For example, if search_language is "th", write the query in Thai.
+     If search_language is "id", write in Indonesian. If "en", write in English.
 
 2. user_query: The user's original question, preserved exactly as-is.
    This will be used later as context for summarization.
@@ -125,7 +129,12 @@ Given a user's question about news or current events, extract three things:
    (e.g. "berita terkini hari ini", "latest news today", "apa yang terjadi", "what's happening").
    false if the user is asking about a specific topic, event, person, or entity.
 
-Always respond in the same language as the user's input."""
+4. suggest_videos: true if the topic would genuinely benefit from YouTube video recommendations.
+   Set true for: major events or crises (war, disaster, election result), complex topics that
+   benefit from visual explanation (economic policy, geopolitical conflict, scientific discovery),
+   or events where footage adds real context (protests, speeches, natural disasters).
+   Set false for: simple factual questions ("siapa presiden Indonesia?"), very recent breaking
+   news where no good video likely exists yet, or topics already well-covered by text alone."""
 
 
 LOCALE_DETECTION_PROMPT_TEMPLATE: ChatPromptTemplate = ChatPromptTemplate.from_messages(
@@ -145,7 +154,7 @@ QUERY_ENRICHMENT_PROMPT_TEMPLATE: ChatPromptTemplate = ChatPromptTemplate.from_m
 QUERY_PLANNER_PROMPT_TEMPLATE: ChatPromptTemplate = ChatPromptTemplate.from_messages(
     [
         ("system", NEWS_QUERY_PLANNER_SYSTEM_PROMPT),
-        ("user", "{user_input}")
+        ("user", "search_language: {search_language}\n\nUser question: {user_input}")
     ]
 )
 

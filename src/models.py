@@ -17,6 +17,16 @@ class NewsQuery(BaseModel):
             "False if the user is asking about a specific topic, event, or entity."
         )
     )
+    suggest_videos: bool = Field(
+        description=(
+            "True if the topic would genuinely benefit from YouTube video recommendations — "
+            "e.g. major events or crises (war, disaster, election), complex topics that benefit "
+            "from visual explanation (economic policy, geopolitical conflict, scientific discovery), "
+            "or events where footage adds real context (protests, speeches, natural disasters). "
+            "False for simple factual questions, very recent breaking news where no good video "
+            "exists yet, or topics already well-covered by text alone."
+        )
+    )
 
 
 class LocaleQuery(BaseModel):

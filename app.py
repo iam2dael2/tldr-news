@@ -12,6 +12,8 @@ from src.agent import agent
 from src.llm import llm
 from src.utils import log_queue as lq
 from src.utils.logger import logger
+import src.tools as _tools_mod
+from src.utils.youtube import fetch_youtube_videos
 
 # ---------------------------------------------------------------------------
 # Page config — must be first Streamlit call
@@ -153,6 +155,59 @@ section[data-testid="stSidebar"] { display: none; }
 /* ── Divider between turns ─────────────────────────────────────────────── */
 .turn-spacer { height: 1.25rem; clear: both; }
 
+/* ── YouTube cards ─────────────────────────────────────────────────────── */
+.yt-section-label {
+    font-size: 0.75rem;
+    color: #6B7280;
+    margin: 1rem 0 0.5rem;
+    letter-spacing: 0.3px;
+}
+.yt-cards-row {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.yt-card {
+    background-color: #141414;
+    border: 1px solid #262626;
+    border-radius: 10px;
+    overflow: hidden;
+    width: 200px;
+    text-decoration: none;
+    color: inherit;
+    flex-shrink: 0;
+    transition: border-color 0.15s;
+}
+.yt-card:hover { border-color: #4ADE80; }
+.yt-card img { width: 100%; height: 112px; object-fit: cover; display: block; }
+.yt-card-body { padding: 0.5rem 0.6rem 0.6rem; }
+.yt-card-title {
+    font-size: 0.78rem;
+    color: #E5E5E5;
+    font-weight: 500;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 0.3rem;
+}
+.yt-card-meta {
+    font-size: 0.7rem;
+    color: #6B7280;
+}
+.yt-duration {
+    background: rgba(0,0,0,0.7);
+    color: #E5E5E5;
+    font-size: 0.65rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    float: right;
+    margin-top: -1.6rem;
+    margin-right: 0.3rem;
+    position: relative;
+}
+
 /* ── Live log panel ────────────────────────────────────────────────────── */
 .log-panel {
     font-size: 0.8rem;
@@ -225,6 +280,33 @@ def _render_message(parsed: dict) -> None:
         )
 
 
+def _render_youtube_cards(videos: list[dict]) -> None:
+    """Render a horizontal row of YouTube video cards."""
+    if not videos:
+        return
+    cards_html = ""
+    for v in videos:
+        title_esc   = _html.escape(v["title"])
+        channel_esc = _html.escape(v["channel"])
+        dur_esc     = _html.escape(v["duration_str"])
+        url         = f"https://www.youtube.com/watch?v={v['video_id']}"
+        thumb       = _html.escape(v["thumbnail"])
+        cards_html += f"""
+<a class="yt-card" href="{url}" target="_blank" rel="noopener">
+  <img src="{thumb}" alt="{title_esc}" loading="lazy">
+  <span class="yt-duration">{dur_esc}</span>
+  <div class="yt-card-body">
+    <div class="yt-card-title">{title_esc}</div>
+    <div class="yt-card-meta">{channel_esc}</div>
+  </div>
+</a>"""
+    st.markdown(
+        f'<div class="yt-section-label">📺 Watch to understand more</div>'
+        f'<div class="yt-cards-row">{cards_html}</div>',
+        unsafe_allow_html=True
+    )
+
+
 def _compact_if_needed(config: dict) -> None:
     """Summarize old messages when history grows too long."""
     state    = agent.get_state(config)
@@ -249,6 +331,9 @@ if "thread_id" not in st.session_state:
 
 if "messages" not in st.session_state:          # display history
     st.session_state.messages = []
+
+if "youtube_cache" not in st.session_state:
+    st.session_state.youtube_cache = {}   # keyed by search_query
 
 config = {"configurable": {"thread_id": st.session_state.thread_id}}
 
@@ -278,6 +363,8 @@ for msg in st.session_state.messages:
                         unsafe_allow_html=True)
         else:
             _render_message(msg["parsed"])
+            if msg.get("videos"):
+                _render_youtube_cards(msg["videos"])
     st.markdown('<div class="turn-spacer"></div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
@@ -402,10 +489,32 @@ if query := st.chat_input("Ask about any news topic…"):
         # ── Render response ─────────────────────────────────────────────
         parsed = _parse_response(response_text)
         _render_message(parsed)
+
+        # ── YouTube videos (only for live news responses) ────────────────
+        videos: list[dict] = []
+        if parsed["structured"] and tool_called and _tools_mod._suggest_videos:
+            search_q = _tools_mod._last_search_query
+            if search_q:
+                cached = search_q in st.session_state.youtube_cache
+                if not cached:
+                    st.session_state.youtube_cache[search_q] = fetch_youtube_videos(search_q)
+                videos = st.session_state.youtube_cache[search_q]
+                logger.info(
+                    f"YouTube: {'cache hit' if cached else f'fetched {len(videos)} video(s)'}"
+                    f" | query='{search_q}'"
+                )
+                _render_youtube_cards(videos)
+        else:
+            logger.info(
+                f"YouTube: skipped | structured={parsed['structured']} "
+                f"tool_called={tool_called} suggest_videos={_tools_mod._suggest_videos}"
+            )
+
         st.session_state.messages.append({
             "role":    "assistant",
             "content": response_text,
             "parsed":  parsed,
+            "videos":  videos,          # store for history re-render
         })
 
     st.markdown('<div class="turn-spacer"></div>', unsafe_allow_html=True)
