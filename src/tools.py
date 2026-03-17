@@ -19,8 +19,11 @@ from src.utils.log_queue import emit
 # Constants
 # ---------------------------------------------------------------------------
 
-# ~1,500 tokens of content per article (1 token ≈ 4 chars)
-_ARTICLE_CHAR_LIMIT = 6000
+# ~750 tokens of content per article (1 token ≈ 4 chars) — enough for lede + key paragraphs
+_ARTICLE_CHAR_LIMIT = 3000
+
+# Seconds between successive summarization thread submissions to stay under Groq's TPM limit
+_SUMMARIZE_STAGGER_SECS = 10
 
 # Topic modifiers used when diversifying a general news query.
 # Each fires a separate search; top 2 results per topic are merged.
@@ -115,7 +118,7 @@ def _summarize_single(article: dict, user_query: str, index: int, total: int) ->
             })
             break
         except RateLimitError:
-            wait = 10 * (attempt + 1)  # 10s, 20s, 30s
+            wait = 60  # wait for a full TPM window reset (Groq resets on a rolling 60s window)
             emit(f"  ⚠️ Rate limited on summarization, retrying in {wait}s... ({attempt + 1}/3)")
             logger.warning(f"Rate limited on article '{title}' — retrying in {wait}s (attempt {attempt + 1}/3)")
             time.sleep(wait)
@@ -136,14 +139,15 @@ def _summarize_single(article: dict, user_query: str, index: int, total: int) ->
 def _map_summarize_articles(articles: list[dict], user_query: str) -> list[dict]:
     """Map phase: summarize all articles in parallel, drop irrelevant ones."""
     total = len(articles)
-    emit(f"📝 Summarizing {total} articles in parallel...")
+    emit(f"📝 Summarizing {total} articles...")
     logger.info(f"Map phase started: {total} articles to summarize")
     summaries = []
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = {
-            executor.submit(_summarize_single, article, user_query, i + 1, total): article
-            for i, article in enumerate(articles)
-        }
+        futures = {}
+        for i, article in enumerate(articles):
+            if i > 0:
+                time.sleep(_SUMMARIZE_STAGGER_SECS)
+            futures[executor.submit(_summarize_single, article, user_query, i + 1, total)] = article
         for future in as_completed(futures):
             result = future.result()
             if result:
